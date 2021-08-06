@@ -1,27 +1,43 @@
-import type { BaseClass, Primitive } from './types';
+import type { BaseClass, Primitive, SimpleRecord } from './types';
 
 export const getLocation = (): string => {
-  try {
-    return document.location.href;
-  } catch (oO) {
-    return '';
-  }
+  return location.origin + location.pathname;
+};
+
+export const getTransaction = () => {
+  return location.hash;
 };
 
 export const getReferrer = (): string => {
-  try {
-    return document.referrer || getLocation();
-  } catch {
-    return getLocation();
-  }
+  return document.referrer || getLocation();
 };
 
 export const getUserAgent = (): string => {
-  try {
-    return navigator.userAgent;
-  } catch (oO) {
-    return '';
+  return navigator.userAgent;
+};
+
+export const getUser = (): SimpleRecord => {
+  const query = location.search.slice(1);
+
+  const params: SimpleRecord = {};
+
+  if (query !== '') {
+    let match: RegExpMatchArray | null;
+    const paramsRegex = /([\w-]+)=([\w-]+)/g;
+    while ((match = paramsRegex.exec(query)) !== null) {
+      params[match[1]] = match[2];
+    }
   }
+
+  return params;
+};
+
+export const getTags = () => {
+  return {
+    browser_screen: screen.width + 'x' + screen.height,
+    browser_language: (navigator.languages && navigator.languages[0]) || navigator.language || (navigator as SimpleRecord).userLanguage || '',
+    browser_frame: window.parent !== window ? 'iframe' : 'native'
+  };
 };
 
 export const getType = ({}).toString;
@@ -98,21 +114,6 @@ export const truncate = (str: string) => {
   return safe;
 };
 
-export const normalizeToSize = (obj: Record<string, unknown>) => {
-  const normalized = Object.assign({}, obj);
-  let value: unknown;
-  for (const key in obj) {
-    value = obj[key];
-    if (typeof value === 'object') {
-      normalized[key] = getType.call(value);
-    }
-    if (typeof value === 'string') {
-      normalized[key] = truncate(value);
-    }
-  }
-  return normalized;
-};
-
 export const createSIDPart = () => (Math.random() * 16 | 0).toString(16) + Date.now().toString(16);
 
 export const createSID = () => {
@@ -129,3 +130,4 @@ export const createSID = () => {
 };
 
 export const createDate = () => new Date().toISOString();
+export const createTimestamp = () => Date.now() / 1000;

@@ -15,10 +15,14 @@ import type {
 import {
   createDate,
   createSID,
+  createTimestamp,
   getLocation,
   getOwn,
   getReferrer,
+  getTags,
+  getTransaction,
   getType,
+  getUser,
   getUserAgent,
   isDOMError,
   isDOMException,
@@ -31,7 +35,6 @@ import {
   isPlainObject,
   isPrimitive,
   isString,
-  normalizeToSize,
   truncate
 } from './utils';
 
@@ -433,9 +436,6 @@ const eventFromPlainObject = (exception: SimpleRecord, syntheticException?: Erro
           rejection ? 'promise rejection' : 'exception'
         } captured with keys: ${extractExceptionKeysForMessage(exception)}`
       }]
-    },
-    extra: {
-      __serialized__: normalizeToSize(exception)
     }
   };
 
@@ -608,6 +608,18 @@ let sid: string;
 let key: string;
 let endpoint: string;
 
+const sdk = {
+  integrations: ['LinkedErrors', 'FunctionToString', 'UserAgent'], // need for feature-detection
+  name: 'sentry.javascript.browser',
+  version: '6.11.0',
+  packages: [{
+    name: 'npm:@sentry/browser',
+    version: '6.11.0'
+  }]
+};
+
+let base: SentryEvent = {};
+
 const dispatchSend = async (body: string, type: string) => {
   return fetch(endpoint + '/' + type + '/?sentry_version=7&sentry_key=' + key, {
     method: 'POST',
@@ -632,10 +644,7 @@ const dispatchInit = () => {
 
   dispatchEnvelope([{
     sent_at: date,
-    sdk: {
-      name: 'sentry.javascript.browser',
-      version: '6.10.0'
-    }
+    sdk
   }, {
     type: 'session'
   }, {
@@ -646,35 +655,19 @@ const dispatchInit = () => {
     status: 'ok',
     errors: 0,
     attrs: {
-      release: 'sentry@0.0.0',
       user_agent: getUserAgent()
     }
   }]);
 };
 
-const dispatchError = (e: SentryEvent) => {
-  const info: SentryEvent = {
-    'platform': 'javascript',
-    'environment': 'production',
-    'sdk': {
-      'integrations': ['InboundFilters', 'FunctionToString', 'TryCatch', 'GlobalHandlers', 'LinkedErrors', 'Dedupe', 'UserAgent'],
-      'name': 'sentry.javascript.browser',
-      'version': '6.10.0',
-      'packages': [{
-        'name': 'npm:@sentry/browser',
-        'version': '6.10.0'
-      }]
-    },
-    'request': {
-      'url': getLocation(),
-      'headers': {
-        'Referer': getReferrer(),
-        'User-Agent': getUserAgent()
-      }
-    }
-  };
+const dispatchError = (event: SentryEvent) => {
+  const store: SentryEvent = Object.assign({}, event, base, {
+    event_id: createSID(),
+    timestamp: createTimestamp(),
+    transaction: getTransaction()
+  });
 
-  dispatchStore(Object.assign(e, info));
+  dispatchStore(store);
 };
 
 /**
@@ -689,6 +682,23 @@ export const init = (sentry_key: string, sentry_endpoint: string, sentry_project
   endpoint = 'https://' + sentry_endpoint + '/api/' + sentry_project;
 
   sid = createSID();
+
+  base = {
+    user: getUser(),
+    tags: getTags(),
+
+    level: 'error',
+    platform: 'javascript',
+    environment: 'production',
+    sdk,
+    request: {
+      url: getLocation(),
+      headers: {
+        ['Referer']: getReferrer(),
+        ['User-Agent']: getUserAgent()
+      }
+    }
+  };
 
   dispatchInit();
 };

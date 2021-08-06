@@ -59,32 +59,20 @@ export interface SentryEvent {
   event_id?: string;
   message?: string;
   timestamp?: number;
-  start_timestamp?: number;
   level?: string;
   platform?: string;
-  logger?: string;
-  server_name?: string;
-  release?: string;
-  dist?: string;
   environment?: string;
   sdk?: SdkInfo;
   request?: Record<string, unknown>;
-  transaction?: string;
-  modules?: { [key: string]: string };
-  fingerprint?: string[];
   exception?: {
     values?: SentryException[];
   };
+  transaction?: string;
   stacktrace?: any;
-  breadcrumbs?: any[];
-  contexts?: any;
   tags?: SimpleRecord;
-  extra?: any;
-  user?: any;
+  extra?: SimpleRecord;
+  user?: SimpleRecord;
   type?: string;
-  spans?: any[];
-  measurements?: any;
-  debug_meta?: any;
 }
 
 export type SentryEventException = Omit<SentryEvent, 'exception'> & {
