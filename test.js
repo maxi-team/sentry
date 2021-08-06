@@ -9,6 +9,6 @@ Sentry.init(
 
 window.onclick = () => {
     Promise.resolve().then(() => {
-      setTimeout(() => FileList.bind(window)());
+      setTimeout(() => sosName);
     });
 }

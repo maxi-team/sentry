@@ -34,7 +34,6 @@ import {
   isNull,
   isPlainObject,
   isPrimitive,
-  isString,
   truncate
 } from './utils';
 
@@ -561,7 +560,7 @@ const enhanceEventWithInitialFrame =  (event: SentryEvent, url?: string, line?: 
   base.exception.values[0].stacktrace.frames = base.exception.values[0].stacktrace.frames || [];
   const colno = isNull(column) ? 0 : +column || 0;
   const lineno = isNull(line) ? 0 : +line || 0;
-  const filename = isString(url) && url.length > 0 ? url : getLocation();
+  const filename = typeof url === 'string' && url.length > 0 ? url : getLocation();
   if (base.exception.values[0].stacktrace.frames.length === 0) {
     base.exception.values[0].stacktrace.frames.push({
       colno,
@@ -705,7 +704,7 @@ export const init = (sentry_key: string, sentry_endpoint: string, sentry_project
 
 window.addEventListener('error', (ev) => {
   const inner = ev.error;
-  let event = inner == null && isString(inner.msg) ? eventFromIncompleteOnError(ev.message, ev.filename, ev.lineno, ev.colno) : enhanceEventWithInitialFrame(eventFromUnknownInput(inner || ev.message, undefined, false), ev.filename, ev.lineno, ev.colno);
+  let event = inner == null && typeof inner.msg === 'string' ? eventFromIncompleteOnError(ev.message, ev.filename, ev.lineno, ev.colno) : enhanceEventWithInitialFrame(eventFromUnknownInput(inner || ev.message, undefined, false), ev.filename, ev.lineno, ev.colno);
   event = addExceptionMechanism(event, {
     handled: false,
     type: 'onerror'
@@ -732,6 +731,3 @@ window.addEventListener('unhandledrejection', (ev) => {
   });
   dispatchError(event);
 });
-
-
-

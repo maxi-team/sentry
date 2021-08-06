@@ -34,9 +34,9 @@ export const getUser = (): SimpleRecord => {
 
 export const getTags = () => {
   return {
-    browser_screen: screen.width + 'x' + screen.height,
-    browser_language: (navigator.languages && navigator.languages[0]) || navigator.language || (navigator as SimpleRecord).userLanguage || '',
-    browser_frame: window.parent !== window ? 'iframe' : 'native'
+    ['browser.screen']: screen.width + 'x' + screen.height,
+    ['browser.language']: (navigator.languages && navigator.languages[0]) || navigator.language || (navigator as SimpleRecord).userLanguage || '',
+    ['browser.frame']: window.parent !== window ? 'iframe' : 'native'
   };
 };
 
@@ -88,10 +88,6 @@ export const isPlainObject = (obj: unknown): obj is Record<string, unknown> => {
   }
 
   return Object.getPrototypeOf(obj) === proto;
-};
-
-export const isString = (wat: unknown): wat is string => {
-  return typeof wat === 'string';
 };
 
 export const isPrimitive = (wat: unknown): wat is Primitive => {
