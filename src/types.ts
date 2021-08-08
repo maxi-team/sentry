@@ -108,3 +108,7 @@ export interface SimpleEvent {
   target?: unknown;
   currentTarget?: unknown;
 }
+
+export type DispatchEvent = (event: SentryEvent) => void;
+
+export type AnyFunction = (...args: any[]) => any;

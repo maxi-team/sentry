@@ -1,4 +1,8 @@
-import type { BaseClass, Primitive, SimpleRecord } from './types';
+import type {
+  BaseClass,
+  Primitive,
+  SimpleRecord
+} from './types.js';
 
 export const getLocation = (): string => {
   return location.origin + location.pathname;
@@ -38,6 +42,20 @@ export const getTags = () => {
     ['browser.language']: (navigator.languages && navigator.languages[0]) || navigator.language || (navigator as SimpleRecord).userLanguage || '',
     ['browser.frame']: window.parent !== window ? 'iframe' : 'native'
   };
+};
+
+export const FUNCTION = '<anonymous>';
+export const UNKNOWN = '<unknown>';
+
+export const getFunctionName = (fn: unknown) => {
+  try {
+    if (!fn || typeof fn !== 'function') {
+      return FUNCTION;
+    }
+    return fn.name || FUNCTION;
+  } catch (e) {
+    return FUNCTION;
+  }
 };
 
 export const getType = ({}).toString;
@@ -127,3 +145,11 @@ export const createSID = () => {
 
 export const createDate = () => new Date().toISOString();
 export const createTimestamp = () => Date.now() / 1000;
+
+export const define = (to: SimpleRecord, name: string, value: any) => {
+  try {
+    Object.defineProperty(to, name, { value });
+  } catch {
+    // noop
+  }
+};
