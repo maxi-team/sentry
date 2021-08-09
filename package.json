@@ -1,6 +1,6 @@
 {
-  "name": "sentry",
-  "version": "0.0.0",
+  "name": "@mntm/sentry",
+  "version": "0.1.0",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "exports": "./dist/index.js",
