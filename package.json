@@ -1,6 +1,23 @@
 {
   "name": "@mntm/sentry",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "author": {
+    "name": "Anton Petrov",
+    "email": "im@petrov.engineer",
+    "url": "https://petrov.engineer"
+  },
+  "description": "A drop-in replacement for Sentry client.",
+  "license": "MIT",
+  "keywords": [
+    "sentry"
+  ],
+  "homepage": "https://github.com/maxi-team/sentry",
+  "bugs": "https://github.com/maxi-team/sentry",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maxi-team/sentry.git"
+  },
+  "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "exports": "./dist/index.js",
