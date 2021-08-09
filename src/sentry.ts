@@ -1,5 +1,4 @@
 import type {
-  ExtendedError,
   SentryEvent,
   SentryException,
   SentryStackFrame,
@@ -7,14 +6,12 @@ import type {
   TraceKitStackFrame,
   TraceKitStackTrace,
   SimpleNode,
-  SimpleEvent,
   SentryEventException,
   SimpleRecord
 } from './types.js';
 
 import {
   getLocation,
-  getOwn,
   getType,
   isDOMError,
   isDOMException,
@@ -22,9 +19,7 @@ import {
   isError,
   isErrorEvent,
   isEvent,
-  isInstanceOf,
-  isNull,
-  isPlainObject,
+  isRecord,
   truncate,
   UNKNOWN,
   FUNCTION
@@ -59,12 +54,10 @@ const gecko = /^\s*(.*?)(?:\((.*?)\))?(?:^|@)?((?:file|https?|blob|chrome|webpac
 const winjs = /^\s*at (?:((?:\[object object\])?.+) )?\(?((?:file|ms-appx|https?|webpack|blob):.*?):(\d+)(?::(\d+))?\)?\s*$/i;
 const geckoEval = /(\S+) line (\d+)(?: > eval line \d+)* > eval/i;
 const chromeEval = /\((\S*)(?::(\d+))(?::(\d+))\)/;
-
 const reactMinifiedRegexp = /Minified React error #\d+;/i;
 const opera10Regex = / line (\d+).*script (?:in )?(\S+)(?:: in function (\S+))?$/i;
 const opera11Regex = / line (\d+), column (\d+)\s*(?:in (?:<anonymous function: ([^>]+)>|([^)]+))\((.*)\))? in (.*):\s*$/i;
-
-const ERROR_TYPES_RE = /^(?:[Uu]ncaught (?:exception: )?)?(?:((?:Eval|Internal|Range|Reference|Syntax|Type|URI|)Error): )?(.*)$/i;
+const errorRegex = /^(?:[Uu]ncaught (?:exception: )?)?(?:((?:Eval|Internal|Range|Reference|Syntax|Type|URI|)Error): )?(.*)$/i;
 
 const computeStackTrace = (ex:SimpleRecord): StackTrace => {
   let stack = null;
@@ -129,10 +122,10 @@ const computeStackTraceFromStackProp = (ex: SimpleRecord): StackTrace | null => 
 
       let url = parts[2] && parts[2].startsWith('address at ') ? parts[2].slice('address at '.length) : parts[2];
       let func = parts[1] || FUNCTION;
-      const isSafariExtension = func.indexOf('safari-extension') !== -1;
-      const isSafariWebExtension = func.indexOf('safari-web-extension') !== -1;
+      const isSafariExtension = func.includes('safari-extension');
+      const isSafariWebExtension = func.includes('safari-web-extension');
       if (isSafariExtension || isSafariWebExtension) {
-        func = func.indexOf('@') !== -1 ? func.split('@')[0] : FUNCTION;
+        func = func.includes('@') ? func.split('@')[0] : FUNCTION;
         url = isSafariExtension ? `safari-extension:${url}` : `safari-web-extension:${url}`;
       }
 
@@ -152,7 +145,7 @@ const computeStackTraceFromStackProp = (ex: SimpleRecord): StackTrace | null => 
         column: parts[4] ? +parts[4] : null
       };
     } else if ((parts = gecko.exec(lines[i]))) {
-      isEval = parts[3] && parts[3].indexOf(' > eval') > -1;
+      isEval = parts[3] && parts[3].includes(' > eval');
       if (isEval && (submatch = geckoEval.exec(parts[3]))) {
 
         parts[1] = parts[1] || `eval`;
@@ -200,9 +193,9 @@ const computeStackTraceFromStacktraceProp = (ex: SimpleRecord): StackTrace | nul
   const lines = (ex.stacktrace as string).split('\n');
   const stack = [];
   let parts;
+  let element = null;
 
   for (let line = 0; line < lines.length; line += 2) {
-    let element = null;
     if ((parts = opera10Regex.exec(lines[line]))) {
       element = {
         url: parts[2],
@@ -221,12 +214,14 @@ const computeStackTraceFromStacktraceProp = (ex: SimpleRecord): StackTrace | nul
       };
     }
 
-    if (element) {
+    if (element !== null) {
       if (!element.func && element.line) {
         element.func = FUNCTION;
       }
       stack.push(element);
     }
+
+    element = null;
   }
 
   if (!stack.length) {
@@ -243,7 +238,7 @@ const computeStackTraceFromStacktraceProp = (ex: SimpleRecord): StackTrace | nul
 const popFrames = (stacktrace: StackTrace, popSize: number): StackTrace => {
   try {
     return Object.assign(stacktrace, stacktrace.stack.slice(popSize));
-  } catch (e) {
+  } catch {
     return stacktrace;
   }
 };
@@ -300,59 +295,29 @@ const htmlTreeAsString = (elem: SimpleNode): string => {
     }
 
     return out;
-  } catch (_oO) {
+  } catch {
     return UNKNOWN;
   }
 };
 
+const htmlTargetAsString = (elem: unknown): string => {
+  return isElement(elem) ? htmlTreeAsString(elem) : getType.call(elem);
+};
+
 const getWalkSource = (value: SimpleRecord): SimpleRecord => {
-  if (isError(value)) {
-    const error = value as unknown as ExtendedError;
-    const err: SimpleRecord = {
-      message: error.message,
-      name: error.name,
-      stack: error.stack
-    };
-
-    for (const i in error) {
-      if (getOwn.call(error, i)) {
-        err[i] = error[i];
-      }
-    }
-
-    return err;
-  }
+  const source = Object.assign({}, value);
 
   if (isEvent(value)) {
-    const event = value as unknown as SimpleEvent;
-    const source: SimpleRecord = {};
-
-    source.type = event.type;
-
     try {
-      source.target = isElement(event.target)
-        ? htmlTreeAsString(event.target)
-        : getType.call(event.target);
-    } catch (_oO) {
+      source.target = htmlTargetAsString(source.target);
+    } catch {
       source.target = UNKNOWN;
     }
 
     try {
-      source.currentTarget = isElement(event.currentTarget)
-        ? htmlTreeAsString(event.currentTarget)
-        : getType.call(event.currentTarget);
-    } catch (_oO) {
+      source.currentTarget = htmlTargetAsString(source.currentTarget);
+    } catch {
       source.currentTarget = UNKNOWN;
-    }
-
-    if (typeof CustomEvent !== 'undefined' && isInstanceOf(value, CustomEvent)) {
-      source.detail = event.detail;
-    }
-
-    for (const i in event) {
-      if (getOwn.call(event, i)) {
-        source[i] = event;
-      }
     }
 
     return source;
@@ -387,15 +352,11 @@ const exceptionFromStacktrace = (stacktrace: TraceKitStackTrace): SentryExceptio
 
   const exception: SentryException = {
     type: stacktrace.name,
-    value: stacktrace.message
+    value: stacktrace.message || 'Unrecoverable error caught'
   };
 
   if (frames && frames.length) {
     exception.stacktrace = { frames };
-  }
-
-  if (isNull(exception.type) && exception.value === '') {
-    exception.value = 'Unrecoverable error caught';
   }
 
   return exception;
@@ -442,28 +403,21 @@ const prepareFramesForEvent = (stack: TraceKitStackFrame[]): SentryStackFrame[] 
   let localStack = stack;
 
   const firstFrameFunction = localStack[0].func || '';
-  const lastFrameFunction = localStack[localStack.length - 1].func || '';
 
-  if (firstFrameFunction.indexOf('captureMessage') !== -1 || firstFrameFunction.indexOf('captureException') !== -1) {
+  if (firstFrameFunction.includes('captureMessage') || firstFrameFunction.includes('captureException')) {
     localStack = localStack.slice(1);
-  }
-
-  if (lastFrameFunction.indexOf('sentryWrapped') !== -1) {
-    localStack = localStack.slice(0, -1);
   }
 
   return localStack
     .slice(0, 20)
-    .map(
-      (frame: TraceKitStackFrame): SentryStackFrame => ({
-        colno: frame.column === null ? 0 : frame.column,
-        filename: frame.url || localStack[0].url,
-        function: frame.func || FUNCTION,
-        in_app: true,
-        lineno: frame.line === null ? 0 : frame.line
-      })
-    )
-    .reverse();
+    .reverse()
+    .map((frame: TraceKitStackFrame): SentryStackFrame => ({
+      colno: frame.column === null ? 0 : frame.column,
+      filename: frame.url || localStack[0].url,
+      function: frame.func || FUNCTION,
+      in_app: true,
+      lineno: frame.line === null ? 0 : frame.line
+    }));
 };
 
 const eventFromString = (input: string, syntheticException: Error | null): SentryEvent => {
@@ -486,13 +440,11 @@ export const eventFromUnknownInput = (exception: unknown, syntheticException: Er
   let event: SentryEvent;
 
   if (isErrorEvent(exception) && exception.error) {
-    const errorEvent = exception as ErrorEvent;
-
-    exception = errorEvent.error;
-    event = eventFromStacktrace(computeStackTrace(exception as Error));
+    event = eventFromStacktrace(computeStackTrace(exception.error as Error));
     return event;
   }
-  if (isDOMError(exception as DOMError) || isDOMException(exception as DOMException)) {
+
+  if (isDOMError(exception) || isDOMException(exception)) {
     const domException = exception as DOMException;
     const name = domException.name || (isDOMError(domException) ? 'DOMError' : 'DOMException');
     const message = domException.message ? `${name}: ${domException.message}` : name;
@@ -507,13 +459,14 @@ export const eventFromUnknownInput = (exception: unknown, syntheticException: Er
 
     return event;
   }
+
   if (isError(exception)) {
     event = eventFromStacktrace(computeStackTrace(exception as SimpleRecord));
     return event;
   }
-  if (isPlainObject(exception) || isEvent(exception)) {
-    const objectException = exception as Record<string, unknown>;
-    event = eventFromPlainObject(objectException, syntheticException, rejection);
+
+  if (isRecord(exception)) {
+    event = eventFromPlainObject(exception, syntheticException, rejection);
     event = addExceptionMechanism(event, {
       synthetic: true
     });
@@ -533,9 +486,9 @@ export const enhanceEventWithInitialFrame =  (event: SentryEvent, url?: string, 
   const base = addExceptionBase(event);
   base.exception.values[0].stacktrace = base.exception.values[0].stacktrace || {};
   base.exception.values[0].stacktrace.frames = base.exception.values[0].stacktrace.frames || [];
-  const colno = isNull(column) ? 0 : +column || 0;
-  const lineno = isNull(line) ? 0 : +line || 0;
-  const filename = typeof url === 'string' && url.length > 0 ? url : getLocation();
+  const colno = column == null ? 0 : +column || 0;
+  const lineno = line == null ? 0 : +line || 0;
+  const filename = typeof url === 'string' && url !== '' ? url : getLocation();
   if (base.exception.values[0].stacktrace.frames.length === 0) {
     base.exception.values[0].stacktrace.frames.push({
       colno,
@@ -549,21 +502,24 @@ export const enhanceEventWithInitialFrame =  (event: SentryEvent, url?: string, 
 };
 
 export const eventFromIncompleteOnError = (msg: ErrorEvent | string, url?: string, line?: number | string, column?: number | string) => {
+  let name = 'Error';
   let message = isErrorEvent(msg) ? msg.message : msg;
-  let name;
-  const groups = message.match(ERROR_TYPES_RE);
+
+  const groups = message.match(errorRegex);
   if (groups) {
-    name = groups[1];
-    message = groups[2];
+    name = groups[1] || name;
+    message = groups[2] || message;
   }
+
   const event = {
     exception: {
       values: [{
-        type: name || 'Error',
+        type: name,
         value: message
       }]
     }
   };
+
   return enhanceEventWithInitialFrame(event, url, line, column);
 };
 

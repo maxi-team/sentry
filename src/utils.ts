@@ -53,26 +53,23 @@ export const getFunctionName = (fn: unknown) => {
       return FUNCTION;
     }
     return fn.name || FUNCTION;
-  } catch (e) {
+  } catch {
     return FUNCTION;
   }
 };
 
 export const getType = ({}).toString;
-export const getOwn = ({}).hasOwnProperty;
 
 export const isInstanceOf = (wat: unknown, base: BaseClass) => {
   try {
     return wat instanceof base;
-  } catch (_e) {
+  } catch {
     return false;
   }
 };
 
-export const isNull = (wat?: null | undefined | unknown): wat is null | undefined => wat == null;
-
 export const isError = (wat: unknown) => {
-  if (isNull(wat)) {
+  if (wat == null) {
     return false;
   }
   switch (getType.call(wat)) {
@@ -86,30 +83,29 @@ export const isError = (wat: unknown) => {
 };
 
 export const isErrorEvent = (wat: unknown): wat is ErrorEvent => {
-  return !isNull(wat) && getType.call(wat) === '[object ErrorEvent]';
+  return wat != null && getType.call(wat) === '[object ErrorEvent]';
 };
 export const isDOMError = (wat: unknown): wat is DOMError => {
-  return !isNull(wat) && getType.call(wat) === '[object DOMError]';
+  return wat != null && getType.call(wat) === '[object DOMError]';
 };
 export const isDOMException = (wat: unknown): wat is DOMException => {
-  return !isNull(wat) && getType.call(wat) === '[object DOMException]';
+  return wat != null && getType.call(wat) === '[object DOMException]';
 };
 
-export const isPlainObject = (obj: unknown): obj is Record<string, unknown> => {
-  if (typeof obj !== 'object' || isNull(obj)) {
+export const isRecord = (wat: unknown): wat is SimpleRecord => {
+  if (typeof wat !== 'object' || wat == null) {
     return false;
   }
 
-  let proto = obj;
-  while (!isNull(Object.getPrototypeOf(proto))) {
-    proto = Object.getPrototypeOf(proto);
+  for (const key in wat) {
+    return true;
   }
 
-  return Object.getPrototypeOf(obj) === proto;
+  return false;
 };
 
 export const isPrimitive = (wat: unknown): wat is Primitive => {
-  return isNull(wat) || (typeof wat !== 'object' && typeof wat !== 'function');
+  return wat == null || (typeof wat !== 'object' && typeof wat !== 'function');
 };
 
 export const isElement = (wat: unknown): wat is Element => {
@@ -146,7 +142,7 @@ export const createSID = () => {
 export const createDate = () => new Date().toISOString();
 export const createTimestamp = () => Date.now() / 1000;
 
-export const define = (to: SimpleRecord, name: string, value: any) => {
+export const define = (to: SimpleRecord, name: string, value: unknown) => {
   try {
     Object.defineProperty(to, name, { value });
   } catch {

@@ -20,42 +20,51 @@ import {
 const registerError = (dispatch: DispatchEvent) => {
   window.addEventListener('error', (ev) => {
     const inner = ev.error;
-    let event = inner == null && typeof inner.msg === 'string' ? eventFromIncompleteOnError(ev.message, ev.filename, ev.lineno, ev.colno) : enhanceEventWithInitialFrame(eventFromUnknownInput(inner || ev.message, null, false), ev.filename, ev.lineno, ev.colno);
+
+    let event = inner == null && typeof ev.message === 'string' ?
+      eventFromIncompleteOnError(ev.message, ev.filename, ev.lineno, ev.colno) :
+      enhanceEventWithInitialFrame(eventFromUnknownInput(inner || ev.message, null, false), ev.filename, ev.lineno, ev.colno);
+
     event = addExceptionMechanism(event, {
       handled: false,
       type: 'onerror'
     });
+
     dispatch(event);
   });
 };
 
 const registerPromise = (dispatch: DispatchEvent) => {
   window.addEventListener('unhandledrejection', (ev) => {
-    const safe = ev as SimpleRecord;
-    let error = safe;
+    let error = ev as SimpleRecord;
     try {
-      if ('reason' in safe) {
-        error = safe.reason;
-      } else if ('detail' in ev && 'reason' in safe.detail) {
-        error = safe.detail.reason;
+      if ('reason' in error) {
+        error = error.reason;
+      } else if ('detail' in ev && 'reason' in error.detail) {
+        error = error.detail.reason;
       }
-    } catch (_oO) {
-    // noop
+    } catch {
+      // noop
     }
-    let event = isPrimitive(error) ? eventFromRejectionWithPrimitive(error) : eventFromUnknownInput(error, null, true);
+
+    let event = isPrimitive(error) ?
+      eventFromRejectionWithPrimitive(error) :
+      eventFromUnknownInput(error, null, true);
+
     event = addExceptionMechanism(event, {
       handled: false,
       type: 'onunhandledrejection'
     });
+
     dispatch(event);
   });
 };
 
 const wrapFunction = (source: SimpleRecord, name: string) => {
-  define(source, name, function (this: any, ...args: any[]) {
+  define(source, name, function (this: unknown, ...args: unknown[]) {
     const fn = args[0];
     if (fn) {
-      define(fn, 'name', name + '(' + getFunctionName(fn) + ')');
+      define(fn as SimpleRecord, 'name', name + '(' + getFunctionName(fn) + ')');
     }
     return source[name].apply(this, args);
   });

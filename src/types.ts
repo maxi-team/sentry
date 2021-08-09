@@ -1,20 +1,18 @@
 export type Primitive = number | string | boolean | bigint | symbol | null | undefined;
 
-export type SimpleRecord = Record<string, any>;
-
 export interface BaseClass {
   new(...args: any[]): any;
 }
 
-export interface TraceKitStackFrame {
+export type TraceKitStackFrame = {
   url: string;
   func: string;
   args: string[];
   line: number | null;
   column: number | null;
-}
+};
 
-export interface SentryStackFrame {
+export type SentryStackFrame = {
   filename?: string;
   function?: string;
   module?: string;
@@ -29,33 +27,33 @@ export interface SentryStackFrame {
   instruction_addr?: string;
   addr_mode?: string;
   vars?: SimpleRecord;
-}
+};
 
-export interface TraceKitStackTrace {
+export type TraceKitStackTrace = {
   name: string;
   message: string;
   mechanism?: string;
   stack: StackFrame[];
   failed?: boolean;
-}
+};
 
-export interface SdkInfo {
+export type SdkInfo = {
   name: string;
   version: string;
   integrations?: string[];
   packages?: any[];
-}
+};
 
-export interface SentryException {
+export type SentryException = {
   type?: string;
   value?: string;
   mechanism?: any;
   module?: string;
   thread_id?: number;
   stacktrace?: any;
-}
+};
 
-export interface SentryEvent {
+export type SentryEvent = {
   event_id?: string;
   message?: string;
   timestamp?: number;
@@ -73,7 +71,7 @@ export interface SentryEvent {
   extra?: SimpleRecord;
   user?: SimpleRecord;
   type?: string;
-}
+};
 
 export type SentryEventException = Omit<SentryEvent, 'exception'> & {
   exception: {
@@ -81,22 +79,25 @@ export type SentryEventException = Omit<SentryEvent, 'exception'> & {
   };
 };
 
-export interface StackFrame {
+export type StackFrame = {
   url: string;
   func: string;
   args: string[];
   line: number | null;
   column: number | null;
-}
-export interface StackTrace {
+};
+
+export type StackTrace ={
   name: string;
   message: string;
   mechanism?: string;
   stack: StackFrame[];
   failed?: boolean;
-}
+};
 
 export type ExtendedError = Error & SimpleRecord;
+
+export type SimpleRecord = Record<string, any>;
 
 export type SimpleNode = {
   parentNode: SimpleNode;
