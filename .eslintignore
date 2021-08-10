@@ -1,12 +1,2 @@
-.husky/
-build/
+dist/
 node_modules/
-public/
-config-overrides.js
-stylelint.config.js
-generate-schema.js
-babel.exclude.js
-src/app/generated/graphql.tsx
-
-main.js
-test.js
