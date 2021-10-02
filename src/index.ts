@@ -23,34 +23,34 @@ let key: string;
 let endpoint: string;
 
 const sdk = {
-  integrations: ['LinkedErrors', 'FunctionToString', 'UserAgent'], // need for feature-detection
+  // Need for feature-detection
+  integrations: ['LinkedErrors', 'FunctionToString', 'UserAgent'],
   name: 'sentry.javascript.browser',
-  version: '6.11.0',
+  version: '6.13.2',
   packages: [{
     name: 'npm:@sentry/browser',
-    version: '6.11.0'
+    version: '6.13.2'
   }]
 };
 
 let base: SentryEvent = {};
 
-const dispatchSend = async (body: string, type: string) => {
-  return fetch(endpoint + '/' + type + '/?sentry_version=7&sentry_key=' + key, {
-    method: 'POST',
-    body,
-    headers: {
-      ['Accept']: 'application/json',
-      ['Content-Type']: 'text/plain;charset=UTF-8'
-    }
-  }).then(async (response) => response.json());
+const dispatchSend = (body: string, type: string) => {
+  const xhr = new XMLHttpRequest();
+  const url = `${endpoint}/${type}/?sentry_version=7&sentry_key=${key}`;
+
+  xhr.open('POST', url, true);
+  xhr.responseType = 'json';
+  xhr.setRequestHeader('Content-Type', 'text/plain;charset=UTF-8');
+  xhr.send(body);
 };
 
-const dispatchStore = async (info: SentryEvent) => {
-  return dispatchSend(JSON.stringify(info), 'store');
+const dispatchStore = (info: SentryEvent) => {
+  dispatchSend(JSON.stringify(info), 'store');
 };
 
-const dispatchEnvelope = async (values: Array<Record<string, unknown>>) => {
-  return dispatchSend(values.map((value) => JSON.stringify(value)).join('\n'), 'envelope');
+const dispatchEnvelope = (values: Array<Record<string, unknown>>) => {
+  dispatchSend(values.map((value) => JSON.stringify(value)).join('\n'), 'envelope');
 };
 
 const dispatchInit = () => {
@@ -93,7 +93,7 @@ const dispatchError = (event: SentryEvent) => {
  */
 export const init = (sentry_key: string, sentry_endpoint: string, sentry_project: string) => {
   key = sentry_key;
-  endpoint = 'https://' + sentry_endpoint + '/api/' + sentry_project;
+  endpoint = `https://${sentry_endpoint}/api/${sentry_project}`;
 
   sid = createSID();
 
@@ -108,8 +108,8 @@ export const init = (sentry_key: string, sentry_endpoint: string, sentry_project
     request: {
       url: getLocation(),
       headers: {
-        ['Referer']: getReferrer(),
-        ['User-Agent']: getUserAgent()
+        'Referer': getReferrer(),
+        'User-Agent': getUserAgent()
       }
     }
   };

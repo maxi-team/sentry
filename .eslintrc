@@ -3,5 +3,12 @@
   "parserOptions": {
     "project": "./tsconfig.json",
     "tsconfigRootDir": "."
+  },
+  "rules": {
+    "no-cond-assign": "off",
+    "no-bitwise": "off",
+    "prefer-rest-params": "off",
+    "unicorn/prefer-math-trunc": "off",
+    "unicorn/prefer-reflect-apply": "off"
   }
 }

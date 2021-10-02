@@ -1,8 +1,6 @@
 export type Primitive = number | string | boolean | bigint | symbol | null | undefined;
 
-export interface BaseClass {
-  new(...args: any[]): any;
-}
+export type BaseClass = new (...args: any[]) => any;
 
 export type TraceKitStackFrame = {
   url: string;
@@ -87,7 +85,7 @@ export type StackFrame = {
   column: number | null;
 };
 
-export type StackTrace ={
+export type StackTrace = {
   name: string;
   message: string;
   mechanism?: string;
@@ -103,12 +101,12 @@ export type SimpleNode = {
   parentNode: SimpleNode;
 } | null;
 
-export interface SimpleEvent {
+export type SimpleEvent = {
   [key: string]: unknown;
   type: string;
   target?: unknown;
   currentTarget?: unknown;
-}
+};
 
 export type DispatchEvent = (event: SentryEvent) => void;
 

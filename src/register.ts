@@ -1,6 +1,6 @@
 import type {
-  SimpleRecord,
-  DispatchEvent
+  DispatchEvent,
+  SimpleRecord
 } from './types.js';
 
 import {
@@ -12,66 +12,79 @@ import {
 } from './sentry.js';
 
 import {
-  isPrimitive,
+  define,
   getFunctionName,
-  define
+  isPrimitive,
+  isRecord
 } from './utils.js';
 
 const registerError = (dispatch: DispatchEvent) => {
   window.addEventListener('error', (ev) => {
-    const inner = ev.error;
+    try {
+      const inner = ev.error;
 
-    let event = inner == null && typeof ev.message === 'string' ?
-      eventFromIncompleteOnError(ev.message, ev.filename, ev.lineno, ev.colno) :
-      enhanceEventWithInitialFrame(eventFromUnknownInput(inner || ev.message, null, false), ev.filename, ev.lineno, ev.colno);
+      let event = inner == null && typeof ev.message === 'string' ?
+        eventFromIncompleteOnError(ev.message, ev.filename, ev.lineno, ev.colno) :
+        enhanceEventWithInitialFrame(eventFromUnknownInput(inner || ev.message, null, false), ev.filename, ev.lineno, ev.colno);
 
-    event = addExceptionMechanism(event, {
-      handled: false,
-      type: 'onerror'
-    });
+      event = addExceptionMechanism(event, {
+        handled: false,
+        type: 'onerror'
+      });
 
-    dispatch(event);
+      dispatch(event);
+    } catch {
+      // Noop
+    }
   });
 };
 
 const registerPromise = (dispatch: DispatchEvent) => {
   window.addEventListener('unhandledrejection', (ev) => {
-    let error = ev as SimpleRecord;
     try {
-      if ('reason' in error) {
-        error = error.reason;
-      } else if ('detail' in ev && 'reason' in error.detail) {
-        error = error.detail.reason;
+      let error = ev as SimpleRecord;
+
+      if (isRecord(error)) {
+        if ('reason' in error) {
+          error = error.reason;
+        } else if ('detail' in error && 'reason' in error.detail) {
+          error = error.detail.reason;
+        } else {
+          // As-is
+        }
       }
+
+      let event = isPrimitive(error) ?
+        eventFromRejectionWithPrimitive(error) :
+        eventFromUnknownInput(error, null, true);
+
+      event = addExceptionMechanism(event, {
+        handled: false,
+        type: 'onunhandledrejection'
+      });
+
+      dispatch(event);
     } catch {
-      // noop
+      // Noop
     }
-
-    let event = isPrimitive(error) ?
-      eventFromRejectionWithPrimitive(error) :
-      eventFromUnknownInput(error, null, true);
-
-    event = addExceptionMechanism(event, {
-      handled: false,
-      type: 'onunhandledrejection'
-    });
-
-    dispatch(event);
   });
 };
 
 const wrapFunction = (source: SimpleRecord, name: string) => {
-  define(source, name, function (this: unknown, ...args: unknown[]) {
-    const fn = args[0];
+  define(source, name, function(this: unknown) {
+    const fn = arguments[0];
+
     if (fn) {
-      define(fn as SimpleRecord, 'name', name + '(' + getFunctionName(fn) + ')');
+      define(fn as SimpleRecord, 'name', `${name}(${getFunctionName(fn)})`);
     }
-    return source[name].apply(this, args);
+
+    return source[name].apply(this, arguments);
   });
 };
 
 const registerAsync = () => {
   const source = window as SimpleRecord;
+
   wrapFunction(source, 'setTimeout');
   wrapFunction(source, 'setInterval');
   wrapFunction(source, 'requestAnimationFrame');

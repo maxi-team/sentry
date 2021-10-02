@@ -1,16 +1,18 @@
 import type {
   SentryEvent,
+  SentryEventException,
   SentryException,
   SentryStackFrame,
+  SimpleNode,
+  SimpleRecord,
   StackTrace,
   TraceKitStackFrame,
-  TraceKitStackTrace,
-  SimpleNode,
-  SentryEventException,
-  SimpleRecord
+  TraceKitStackTrace
 } from './types.js';
 
 import {
+  FUNCTION,
+  UNKNOWN,
   getLocation,
   getType,
   isDOMError,
@@ -20,82 +22,69 @@ import {
   isErrorEvent,
   isEvent,
   isRecord,
-  truncate,
-  UNKNOWN,
-  FUNCTION
+  truncate
 } from './utils.js';
 
 const addExceptionBase = (event: SentryEvent): SentryEventException => {
   const base = event as SentryEventException;
+
   base.exception = base.exception || {};
   base.exception.values = base.exception.values || [];
   base.exception.values[0] = base.exception.values[0] || {};
+
   return base;
 };
 
 const addExceptionTypeValue = (event: SentryEvent, value?: string, type?: string): SentryEventException => {
   const base = addExceptionBase(event);
+
   base.exception.values[0].value = base.exception.values[0].value || value || '';
   base.exception.values[0].type = base.exception.values[0].type || type || 'Error';
+
   return base;
 };
 
 export const addExceptionMechanism = (event: SentryEvent, mechanism: SimpleRecord): SentryEventException => {
   const base = addExceptionBase(event);
+
   base.exception.values[0].mechanism = base.exception.values[0].mechanism || {};
   for (const key in mechanism) {
     base.exception.values[0].mechanism[key] = mechanism[key];
   }
+
   return base;
 };
 
-const chrome = /^\s*at (?:(.*?) ?\()?((?:file|https?|blob|chrome-extension|address|native|eval|webpack|<anonymous>|[-a-z]+:|.*bundle|\/).*?)(?::(\d+))?(?::(\d+))?\)?\s*$/i;
-const gecko = /^\s*(.*?)(?:\((.*?)\))?(?:^|@)?((?:file|https?|blob|chrome|webpack|resource|moz-extension|capacitor).*?:\/.*?|\[native code\]|[^@]*(?:bundle|\d+\.js)|\/[\w\-. /=]+)(?::(\d+))?(?::(\d+))?\s*$/i;
-const winjs = /^\s*at (?:((?:\[object object\])?.+) )?\(?((?:file|ms-appx|https?|webpack|blob):.*?):(\d+)(?::(\d+))?\)?\s*$/i;
+const extractMessage = (ex: SimpleRecord): string => {
+  const message = ex && ex.message;
+
+  if (!message) {
+    return 'No error message';
+  }
+  if (message.error && typeof message.error.message === 'string') {
+    return message.error.message;
+  }
+
+  return message;
+};
+
+const popFrames = (stacktrace: StackTrace, popSize: number): StackTrace => {
+  try {
+    return Object.assign(stacktrace, stacktrace.stack.slice(popSize));
+  } catch {
+    return stacktrace;
+  }
+};
+
+const chrome = /^\s*at (?:(.*?) ?\()?((?:file|https?|blob|chrome-extension|address|native|eval|webpack|<anonymous>|[a-z-]+:|.*bundle|\/).*?)(?::(\d+))?(?::(\d+))?\)?\s*$/i;
+const gecko = /^\s*(.*?)(?:\((.*?)\))?(?:^|@)?((?:file|https?|blob|chrome|webpack|resource|moz-extension|capacitor).*?:\/.*?|\[native code]|[^@]*(?:bundle|\d+\.js)|\/[\w ./=-]+)(?::(\d+))?(?::(\d+))?\s*$/i;
+const winjs = /^\s*at (?:((?:\[object object])?.+) )?\(?((?:file|ms-appx|https?|webpack|blob):.*?):(\d+)(?::(\d+))?\)?\s*$/i;
 const geckoEval = /(\S+) line (\d+)(?: > eval line \d+)* > eval/i;
-const chromeEval = /\((\S*)(?::(\d+))(?::(\d+))\)/;
-const reactMinifiedRegexp = /Minified React error #\d+;/i;
+const chromeEval = /\((\S*):(\d+):(\d+)\)/;
+const reactMinifiedRegexp = /minified react error #\d+;/i;
 const opera10Regex = / line (\d+).*script (?:in )?(\S+)(?:: in function (\S+))?$/i;
 const opera11Regex = / line (\d+), column (\d+)\s*(?:in (?:<anonymous function: ([^>]+)>|([^)]+))\((.*)\))? in (.*):\s*$/i;
-const errorRegex = /^(?:[Uu]ncaught (?:exception: )?)?(?:((?:Eval|Internal|Range|Reference|Syntax|Type|URI|)Error): )?(.*)$/i;
-
-const computeStackTrace = (ex:SimpleRecord): StackTrace => {
-  let stack = null;
-  let popSize = 0;
-
-  if (ex) {
-    if (typeof ex.framesToPop === 'number') {
-      popSize = ex.framesToPop;
-    } else if (reactMinifiedRegexp.test(ex.message as string)) {
-      popSize = 1;
-    }
-  }
-
-  try {
-    stack = computeStackTraceFromStacktraceProp(ex);
-    if (stack) {
-      return popFrames(stack, popSize);
-    }
-  } catch {
-    // noop
-  }
-
-  try {
-    stack = computeStackTraceFromStackProp(ex);
-    if (stack) {
-      return popFrames(stack, popSize);
-    }
-  } catch {
-    // noop
-  }
-
-  return {
-    message: extractMessage(ex),
-    name: ex && (ex.name as string) || UNKNOWN,
-    stack: [],
-    failed: true
-  };
-};
+const errorRegex = /^(?:uncaught (?:exception: )?)?(?:((?:eval|internal|range|reference|syntax|type|uri|)error): )?(.*)$/i;
 
 const computeStackTraceFromStackProp = (ex: SimpleRecord): StackTrace | null => {
   if (!ex || !ex.stack) {
@@ -109,12 +98,12 @@ const computeStackTraceFromStackProp = (ex: SimpleRecord): StackTrace | null => 
   let parts;
   let element;
 
-  for (let i = 0; i < lines.length; ++i) {
-    if ((parts = chrome.exec(lines[i]))) {
+  for (const [i, line] of lines.entries()) {
+    if ((parts = chrome.exec(line))) {
       const isNative = parts[2] && parts[2].startsWith('native');
+
       isEval = parts[2] && parts[2].startsWith('eval');
       if (isEval && (submatch = chromeEval.exec(parts[2]))) {
-
         parts[2] = submatch[1];
         parts[3] = submatch[2];
         parts[4] = submatch[3];
@@ -124,6 +113,7 @@ const computeStackTraceFromStackProp = (ex: SimpleRecord): StackTrace | null => 
       let func = parts[1] || FUNCTION;
       const isSafariExtension = func.includes('safari-extension');
       const isSafariWebExtension = func.includes('safari-web-extension');
+
       if (isSafariExtension || isSafariWebExtension) {
         func = func.includes('@') ? func.split('@')[0] : FUNCTION;
         url = isSafariExtension ? `safari-extension:${url}` : `safari-web-extension:${url}`;
@@ -136,7 +126,7 @@ const computeStackTraceFromStackProp = (ex: SimpleRecord): StackTrace | null => 
         line: parts[3] ? +parts[3] : null,
         column: parts[4] ? +parts[4] : null
       };
-    } else if ((parts = winjs.exec(lines[i]))) {
+    } else if ((parts = winjs.exec(line))) {
       element = {
         url: parts[2],
         func: parts[1] || FUNCTION,
@@ -144,16 +134,17 @@ const computeStackTraceFromStackProp = (ex: SimpleRecord): StackTrace | null => 
         line: +parts[3],
         column: parts[4] ? +parts[4] : null
       };
-    } else if ((parts = gecko.exec(lines[i]))) {
+    } else if ((parts = gecko.exec(line))) {
       isEval = parts[3] && parts[3].includes(' > eval');
       if (isEval && (submatch = geckoEval.exec(parts[3]))) {
-
         parts[1] = parts[1] || `eval`;
         parts[3] = submatch[1];
         parts[4] = submatch[2];
         parts[5] = '';
       } else if (i === 0 && !parts[5] && ex.columnNumber != null) {
         stack[0].column = (ex.columnNumber as number) + 1;
+      } else {
+        // As-is
       }
       element = {
         url: parts[3],
@@ -163,6 +154,7 @@ const computeStackTraceFromStackProp = (ex: SimpleRecord): StackTrace | null => 
         column: parts[5] ? +parts[5] : null
       };
     } else {
+      // As-is
       continue;
     }
 
@@ -173,7 +165,7 @@ const computeStackTraceFromStackProp = (ex: SimpleRecord): StackTrace | null => 
     stack.push(element);
   }
 
-  if (!stack.length) {
+  if (stack.length === 0) {
     return null;
   }
 
@@ -183,7 +175,6 @@ const computeStackTraceFromStackProp = (ex: SimpleRecord): StackTrace | null => 
     stack
   };
 };
-
 
 const computeStackTraceFromStacktraceProp = (ex: SimpleRecord): StackTrace | null => {
   if (!ex || !ex.stacktrace) {
@@ -212,6 +203,8 @@ const computeStackTraceFromStacktraceProp = (ex: SimpleRecord): StackTrace | nul
         line: +parts[1],
         column: +parts[2]
       };
+    } else {
+      // As-is
     }
 
     if (element !== null) {
@@ -224,7 +217,7 @@ const computeStackTraceFromStacktraceProp = (ex: SimpleRecord): StackTrace | nul
     element = null;
   }
 
-  if (!stack.length) {
+  if (stack.length === 0) {
     return null;
   }
 
@@ -235,12 +228,44 @@ const computeStackTraceFromStacktraceProp = (ex: SimpleRecord): StackTrace | nul
   };
 };
 
-const popFrames = (stacktrace: StackTrace, popSize: number): StackTrace => {
-  try {
-    return Object.assign(stacktrace, stacktrace.stack.slice(popSize));
-  } catch {
-    return stacktrace;
+const computeStackTrace = (ex: SimpleRecord): StackTrace => {
+  let stack = null;
+  let popSize = 0;
+
+  if (ex) {
+    if (typeof ex.framesToPop === 'number') {
+      popSize = ex.framesToPop;
+    } else if (reactMinifiedRegexp.test(ex.message as string)) {
+      popSize = 1;
+    } else {
+      // As-is
+    }
   }
+
+  try {
+    stack = computeStackTraceFromStacktraceProp(ex);
+    if (stack) {
+      return popFrames(stack, popSize);
+    }
+  } catch {
+    // Noop
+  }
+
+  try {
+    stack = computeStackTraceFromStackProp(ex);
+    if (stack) {
+      return popFrames(stack, popSize);
+    }
+  } catch {
+    // Noop
+  }
+
+  return {
+    message: extractMessage(ex),
+    name: (ex && ex.name as string) || UNKNOWN,
+    stack: [],
+    failed: true
+  };
 };
 
 const htmlElementAsString = (el: unknown): string => {
@@ -255,11 +280,13 @@ const htmlElementAsString = (el: unknown): string => {
   out += elem.tagName.toLowerCase();
 
   const id = elem.id;
+
   if (id) {
-    out += '#' + id;
+    out += `#${id}`;
   }
 
   let className = elem.className;
+
   if (className) {
     if (typeof className === 'object' && className.baseVal) {
       className = className.baseVal;
@@ -281,10 +308,11 @@ const htmlTreeAsString = (elem: SimpleNode): string => {
     const separator = ' > ';
     const sepLength = separator.length;
     let nextStr;
+
     while (currentElem && height++ < MAX_TRAVERSE_HEIGHT) {
       nextStr = htmlElementAsString(currentElem);
 
-      if (nextStr === 'html' || (height > 1 && len + out.length * sepLength + nextStr.length >= MAX_OUTPUT_LEN)) {
+      if (nextStr === 'html' || (height > 1 && len + (out.length * sepLength) + nextStr.length >= MAX_OUTPUT_LEN)) {
         break;
       }
 
@@ -329,22 +357,36 @@ const getWalkSource = (value: SimpleRecord): SimpleRecord => {
 const extractExceptionKeysForMessage = (exception: SimpleRecord): string => {
   const keys = Object.keys(getWalkSource(exception));
 
-  if (!keys.length) {
+  if (keys.length === 0) {
     return UNKNOWN;
   }
 
   return truncate(keys.join(', '));
 };
 
-const extractMessage = (ex: SimpleRecord): string => {
-  const message = ex && ex.message;
-  if (!message) {
-    return 'No error message';
+const prepareFramesForEvent = (stack: TraceKitStackFrame[]): SentryStackFrame[] => {
+  if (!stack || stack.length === 0) {
+    return [];
   }
-  if (message.error && typeof message.error.message === 'string') {
-    return message.error.message;
+
+  let localStack = stack;
+
+  const firstFrameFunction = localStack[0].func || '';
+
+  if (firstFrameFunction.includes('captureMessage') || firstFrameFunction.includes('captureException')) {
+    localStack = localStack.slice(1);
   }
-  return message;
+
+  return localStack.
+    slice(0, 20).
+    reverse().
+    map((frame: TraceKitStackFrame): SentryStackFrame => ({
+      colno: frame.column === null ? 0 : frame.column,
+      filename: frame.url || localStack[0].url,
+      function: frame.func || FUNCTION,
+      in_app: true,
+      lineno: frame.line === null ? 0 : frame.line
+    }));
 };
 
 const exceptionFromStacktrace = (stacktrace: TraceKitStackTrace): SentryException => {
@@ -355,7 +397,7 @@ const exceptionFromStacktrace = (stacktrace: TraceKitStackTrace): SentryExceptio
     value: stacktrace.message || 'Unrecoverable error caught'
   };
 
-  if (frames && frames.length) {
+  if (frames && frames.length > 0) {
     exception.stacktrace = { frames };
   }
 
@@ -363,10 +405,12 @@ const exceptionFromStacktrace = (stacktrace: TraceKitStackTrace): SentryExceptio
 };
 
 const eventFromPlainObject = (exception: SimpleRecord, syntheticException: Error | null, rejection: boolean): SentryEvent => {
+  const fallback = rejection ? 'UnhandledRejection' : 'Error';
+
   const event: SentryEvent = {
     exception: {
       values: [{
-        type: isEvent(exception) ? exception.constructor.name : rejection ? 'UnhandledRejection' : 'Error',
+        type: isEvent(exception) ? exception.constructor.name : fallback,
         value: `Non-Error ${
           rejection ? 'promise rejection' : 'exception'
         } captured with keys: ${extractExceptionKeysForMessage(exception)}`
@@ -377,6 +421,7 @@ const eventFromPlainObject = (exception: SimpleRecord, syntheticException: Error
   if (syntheticException) {
     const stacktrace = computeStackTrace(syntheticException);
     const frames = prepareFramesForEvent(stacktrace.stack);
+
     event.stacktrace = {
       frames
     };
@@ -395,31 +440,6 @@ const eventFromStacktrace = (stacktrace: TraceKitStackTrace): SentryEvent => {
   };
 };
 
-const prepareFramesForEvent = (stack: TraceKitStackFrame[]): SentryStackFrame[] => {
-  if (!stack || !stack.length) {
-    return [];
-  }
-
-  let localStack = stack;
-
-  const firstFrameFunction = localStack[0].func || '';
-
-  if (firstFrameFunction.includes('captureMessage') || firstFrameFunction.includes('captureException')) {
-    localStack = localStack.slice(1);
-  }
-
-  return localStack
-    .slice(0, 20)
-    .reverse()
-    .map((frame: TraceKitStackFrame): SentryStackFrame => ({
-      colno: frame.column === null ? 0 : frame.column,
-      filename: frame.url || localStack[0].url,
-      function: frame.func || FUNCTION,
-      in_app: true,
-      lineno: frame.line === null ? 0 : frame.line
-    }));
-};
-
 const eventFromString = (input: string, syntheticException: Error | null): SentryEvent => {
   const event: SentryEvent = {
     message: input
@@ -428,6 +448,7 @@ const eventFromString = (input: string, syntheticException: Error | null): Sentr
   if (syntheticException) {
     const stacktrace = computeStackTrace(syntheticException);
     const frames = prepareFramesForEvent(stacktrace.stack);
+
     event.stacktrace = {
       frames
     };
@@ -436,16 +457,17 @@ const eventFromString = (input: string, syntheticException: Error | null): Sentr
   return event;
 };
 
-export const eventFromUnknownInput = (exception: unknown, syntheticException: Error | null, rejection: boolean): SentryEvent =>{
+export const eventFromUnknownInput = (exception: unknown, syntheticException: Error | null, rejection: boolean): SentryEvent => {
   let event: SentryEvent;
 
   if (isErrorEvent(exception) && exception.error) {
     event = eventFromStacktrace(computeStackTrace(exception.error as Error));
+
     return event;
   }
 
   if (isDOMError(exception) || isDOMException(exception)) {
-    const domException = exception as DOMException;
+    const domException = exception;
     const name = domException.name || (isDOMError(domException) ? 'DOMError' : 'DOMException');
     const message = domException.message ? `${name}: ${domException.message}` : name;
 
@@ -462,6 +484,7 @@ export const eventFromUnknownInput = (exception: unknown, syntheticException: Er
 
   if (isError(exception)) {
     event = eventFromStacktrace(computeStackTrace(exception as SimpleRecord));
+
     return event;
   }
 
@@ -470,11 +493,12 @@ export const eventFromUnknownInput = (exception: unknown, syntheticException: Er
     event = addExceptionMechanism(event, {
       synthetic: true
     });
+
     return event;
   }
 
   event = eventFromString(exception as string, syntheticException);
-  event = addExceptionTypeValue(event, `${exception}`, undefined);
+  event = addExceptionTypeValue(event, `${exception}`);
   event = addExceptionMechanism(event, {
     synthetic: true
   });
@@ -482,13 +506,15 @@ export const eventFromUnknownInput = (exception: unknown, syntheticException: Er
   return event;
 };
 
-export const enhanceEventWithInitialFrame =  (event: SentryEvent, url?: string, line?: number | string, column?: number | string): SentryEventException => {
+export const enhanceEventWithInitialFrame = (event: SentryEvent, url?: string, line?: number | string, column?: number | string): SentryEventException => {
   const base = addExceptionBase(event);
+
   base.exception.values[0].stacktrace = base.exception.values[0].stacktrace || {};
   base.exception.values[0].stacktrace.frames = base.exception.values[0].stacktrace.frames || [];
   const colno = column == null ? 0 : +column || 0;
   const lineno = line == null ? 0 : +line || 0;
   const filename = typeof url === 'string' && url !== '' ? url : getLocation();
+
   if (base.exception.values[0].stacktrace.frames.length === 0) {
     base.exception.values[0].stacktrace.frames.push({
       colno,
@@ -498,6 +524,7 @@ export const enhanceEventWithInitialFrame =  (event: SentryEvent, url?: string, 
       lineno
     });
   }
+
   return base;
 };
 
@@ -505,7 +532,8 @@ export const eventFromIncompleteOnError = (msg: ErrorEvent | string, url?: strin
   let name = 'Error';
   let message = isErrorEvent(msg) ? msg.message : msg;
 
-  const groups = message.match(errorRegex);
+  const groups = errorRegex.exec(message);
+
   if (groups) {
     name = groups[1] || name;
     message = groups[2] || message;
@@ -528,7 +556,7 @@ export const eventFromRejectionWithPrimitive = (reason: unknown) => {
     exception: {
       values: [{
         type: 'UnhandledRejection',
-        value: 'Non-Error promise rejection captured with value: ' + String(reason)
+        value: `Non-Error promise rejection captured with value: ${String(reason)}`
       }]
     }
   };

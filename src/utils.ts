@@ -28,6 +28,7 @@ export const getUser = (): SimpleRecord => {
   if (query !== '') {
     let match: RegExpMatchArray | null;
     const paramsRegex = /([\w-]+)=([\w-]+)/g;
+
     while ((match = paramsRegex.exec(query)) !== null) {
       params[match[1]] = match[2];
     }
@@ -36,11 +37,16 @@ export const getUser = (): SimpleRecord => {
   return params;
 };
 
+const screen = window.screen || {
+  width: window.innerWidth,
+  height: window.innerHeight
+};
+
 export const getTags = () => {
   return {
-    ['browser.screen']: screen.width + 'x' + screen.height,
-    ['browser.language']: (navigator.languages && navigator.languages[0]) || navigator.language || (navigator as SimpleRecord).userLanguage || '',
-    ['browser.frame']: window.parent !== window ? 'iframe' : 'native'
+    'browser.screen': `${screen.width}x${screen.height}`,
+    'browser.language': (navigator.languages && navigator.languages[0]) || navigator.language || (navigator as SimpleRecord).userLanguage || '',
+    'browser.frame': window.parent !== window ? 'iframe' : 'native'
   };
 };
 
@@ -52,13 +58,14 @@ export const getFunctionName = (fn: unknown) => {
     if (!fn || typeof fn !== 'function') {
       return FUNCTION;
     }
+
     return fn.name || FUNCTION;
   } catch {
     return FUNCTION;
   }
 };
 
-export const getType = ({}).toString;
+export const getType = {}.toString;
 
 export const isInstanceOf = (wat: unknown, base: BaseClass) => {
   try {
@@ -85,7 +92,7 @@ export const isError = (wat: unknown) => {
 export const isErrorEvent = (wat: unknown): wat is ErrorEvent => {
   return wat != null && getType.call(wat) === '[object ErrorEvent]';
 };
-export const isDOMError = (wat: unknown): wat is DOMError => {
+export const isDOMError = (wat: unknown): wat is DOMException => {
   return wat != null && getType.call(wat) === '[object DOMError]';
 };
 export const isDOMException = (wat: unknown): wat is DOMException => {
@@ -117,10 +124,12 @@ export const isEvent = (wat: unknown): wat is Event => {
 };
 
 export const truncate = (str: string) => {
-  const safe = '' + str;
+  const safe = `${str}`;
+
   if (safe.length > 25) {
-    return ('' + str).slice(0, 20) + '<...>';
+    return `${safe.slice(0, 20)}<...>`;
   }
+
   return safe;
 };
 
@@ -131,6 +140,7 @@ export const createSID = () => {
   const order = (((Math.random() * 16 | 0) & 0x3) | 0x8).toString(16);
 
   let part = '';
+
   while (part.length < 30) {
     part += createSIDPart();
   }
@@ -146,6 +156,6 @@ export const define = (to: SimpleRecord, name: string, value: unknown) => {
   try {
     Object.defineProperty(to, name, { value });
   } catch {
-    // noop
+    // Noop
   }
 };

@@ -1,6 +1,6 @@
 {
   "name": "@mntm/sentry",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "author": {
     "name": "Anton Petrov",
     "email": "im@petrov.engineer",
@@ -18,18 +18,17 @@
     "url": "https://github.com/maxi-team/sentry.git"
   },
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "exports": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/index.d.ts",
   "scripts": {
-    "prebuild": "shx rm -rf dist",
+    "prebuild": "shx rm -rf lib",
     "build": "tsc"
   },
   "devDependencies": {
-    "@mntm/eslint-config": "^0.2.0",
+    "@mntm/eslint-config": "^0.4.3",
     "eslint": "^7.32.0",
     "shx": "^0.3.3",
-    "typescript": "^4.3.5"
+    "typescript": "^4.4.3"
   }
 }
